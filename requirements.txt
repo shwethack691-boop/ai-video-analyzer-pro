@@ -1,15 +1,12 @@
 streamlit
-yt-dlp
 openai-whisper
+yt-dlp
 deep-translator
 gTTS
-
 python-docx
 fpdf2
 python-pptx
-
 torch
 numpy
 pandas
-
 ffmpeg-python
