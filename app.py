@@ -1,90 +1,78 @@
 import streamlit as st
-import os
-
+import yt_dlp
 from utils import (
-    register_user,
-    login_user,
     transcribe_audio,
-    download_audio_from_youtube,
-    summarize_text,
-    extract_chapters,
     translate_text,
-    save_pdf,
+    generate_summary,
+    extract_bullets,
+    generate_chapters,
     save_docx,
+    save_pdf,
     save_ppt,
     text_to_audio
 )
+import os
 
-st.set_page_config(page_title="AI Video Analyzer Pro", layout="wide")
+# -----------------------
+# PAGE CONFIG
+# -----------------------
+st.set_page_config(page_title="AI Video Analyzer SaaS", layout="wide")
 
-# =========================
+# -----------------------
 # SESSION STATE
-# =========================
+# -----------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-if "user" not in st.session_state:
-    st.session_state.user = ""
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-# =========================
-# AUTH PAGE (LOGIN + REGISTER)
-# =========================
+# -----------------------
+# LOGIN
+# -----------------------
 if not st.session_state.logged_in:
+    st.title("🔐 SaaS Login")
 
-    st.title("🔐 AI Video Analyzer - Auth System")
+    user = st.text_input("Username")
+    pwd = st.text_input("Password", type="password")
 
-    choice = st.radio("Choose Option", ["Login", "Register"])
-
-    # ================= REGISTER =================
-    if choice == "Register":
-        st.subheader("📝 Register")
-
-        new_user = st.text_input("Username")
-        new_pass = st.text_input("Password", type="password")
-
-        if st.button("Register"):
-            if register_user(new_user, new_pass):
-                st.success("Registered successfully! Now login.")
-            else:
-                st.error("User already exists")
-
-    # ================= LOGIN =================
-    if choice == "Login":
-        st.subheader("🔑 Login")
-
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-
-        if st.button("Login"):
-            if login_user(username, password):
-                st.session_state.logged_in = True
-                st.session_state.user = username
-                st.rerun()
-            else:
-                st.error("Invalid credentials")
+    if st.button("Login"):
+        if user and pwd:
+            st.session_state.logged_in = True
+            st.session_state.user = user
+            st.rerun()
 
     st.stop()
 
-# =========================
-# DASHBOARD
-# =========================
-st.sidebar.title(f"👤 Welcome {st.session_state.user}")
-menu = st.sidebar.radio("Menu", ["🏠 Dashboard", "📜 History"])
+# -----------------------
+# SIDEBAR
+# -----------------------
+st.sidebar.title(f"👤 {st.session_state.user}")
+menu = st.sidebar.radio("Menu", ["Dashboard", "History"])
 
+# -----------------------
+# HISTORY
+# -----------------------
+if menu == "History":
+    st.title("📜 History")
+    for h in st.session_state.history:
+        st.write(h)
+    st.stop()
+
+# -----------------------
+# DASHBOARD
+# -----------------------
 st.title("🎬 AI Video Analyzer Pro (SaaS)")
 
-# =========================
-# INPUT
-# =========================
 input_type = st.radio("Input Type", ["Upload File", "YouTube URL"])
 
 text = ""
 
-# =========================
-# UPLOAD
-# =========================
+# -----------------------
+# FILE UPLOAD
+# -----------------------
 if input_type == "Upload File":
-    file = st.file_uploader("Upload Video/Audio", type=["mp4", "mp3", "wav", "m4a"])
+    file = st.file_uploader("Upload Video/Audio")
 
     if file:
         path = "temp.mp4"
@@ -94,73 +82,79 @@ if input_type == "Upload File":
         st.info("Transcribing...")
         text = transcribe_audio(path)
 
-# =========================
-# YOUTUBE
-# =========================
+# -----------------------
+# YOUTUBE (SAFE MODE)
+# -----------------------
 if input_type == "YouTube URL":
     url = st.text_input("Enter YouTube URL")
 
     if url:
-        st.info("Processing YouTube...")
+        st.warning("⚠ YouTube may fail on cloud. If error, upload file instead.")
 
-        audio = download_audio_from_youtube(url)
+        try:
+            ydl_opts = {"format": "bestaudio/best", "outtmpl": "video.mp4"}
 
-        if audio:
-            text = transcribe_audio(audio)
-        else:
-            st.error("YouTube download failed. Please upload file.")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
 
-# =========================
-# OUTPUT
-# =========================
+            text = transcribe_audio("video.mp4")
+
+        except:
+            st.error("YouTube blocked. Please upload file.")
+
+# -----------------------
+# OUTPUT SECTION
+# -----------------------
 if text:
     st.subheader("📄 Transcript")
     st.write(text)
 
-    # SAVE HISTORY
-    st.session_state.setdefault("history", []).append(text)
+    st.session_state.history.append(text)
 
-    # ================= SUMMARY =================
+    # SUMMARY
+    mode = st.selectbox("AI Summary Level", ["short", "medium", "long"])
+    summary = generate_summary(text, mode)
+
     st.subheader("🧠 AI Summary")
-    level = st.radio("Summary Level", ["Short", "Medium", "Long"])
-    summary = summarize_text(text, level)
     st.write(summary)
 
-    # ================= CHAPTERS =================
-    st.subheader("⏱ Chapters")
-    chapters = extract_chapters(text)
-    for c in chapters:
-        st.write(f"{c['time']} - {c['title']}")
+    # BULLETS
+    st.subheader("📌 Key Highlights")
+    st.write(extract_bullets(text))
 
-    # ================= TRANSLATION =================
-    lang = st.selectbox("🌍 Translate", ["en", "hi", "kn", "ta", "te", "fr", "de"])
+    # CHAPTERS
+    st.subheader("⏱ Timeline Chapters")
+    st.write(generate_chapters(text))
+
+    # TRANSLATION
+    lang = st.selectbox("🌍 Language", ["en", "hi", "kn", "ta", "te", "fr", "de"])
     translated = translate_text(summary, lang)
 
-    st.subheader("🌍 Translated")
+    st.subheader("🌍 Translated Summary")
     st.write(translated)
 
-    # ================= EXPORT =================
+    # EXPORT
     st.subheader("📤 Export")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         if st.button("PDF"):
             file = save_pdf(translated)
-            st.download_button("Download", open(file, "rb"), file_name="report.pdf")
+            st.download_button("Download", open(file, "rb"), file_name=file)
 
     with col2:
         if st.button("DOCX"):
             file = save_docx(translated)
-            st.download_button("Download", open(file, "rb"), file_name="report.docx")
+            st.download_button("Download", open(file, "rb"), file_name=file)
 
     with col3:
         if st.button("PPT"):
             file = save_ppt(translated)
-            st.download_button("Download", open(file, "rb"), file_name="report.pptx")
+            st.download_button("Download", open(file, "rb"), file_name=file)
 
-    with col4:
-        if st.button("AUDIO"):
-            audio = text_to_audio(translated)
-            st.audio(audio)
-            st.download_button("Download", open(audio, "rb"), file_name="audio.mp3")
+    # AUDIO
+    if st.button("Generate Audio"):
+        audio = text_to_audio(translated, lang)
+        st.audio(audio)
+        st.download_button("Download MP3", open(audio, "rb"), file_name=audio)
