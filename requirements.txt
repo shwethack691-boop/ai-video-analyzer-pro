@@ -1,6 +1,6 @@
-streamlit
-youtube-transcript-api
-deep-translator
-gTTS
-fpdf
-python-docx
+streamlit==1.33.0
+youtube-transcript-api==0.6.2
+deep-translator==1.11.4
+gTTS==2.5.1
+fpdf==1.7.2
+python-docx==1.1.0
