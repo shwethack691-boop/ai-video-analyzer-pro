@@ -1,123 +1,75 @@
 import whisper
-import yt_dlp
-import json
-import os
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 from docx import Document
 from fpdf import FPDF
 from pptx import Presentation
+import os
 
-# =========================
-# USER DATABASE
-# =========================
-USER_FILE = "users.json"
-
-def load_users():
-    if not os.path.exists(USER_FILE):
-        return {}
-    with open(USER_FILE, "r") as f:
-        return json.load(f)
-
-def save_users(users):
-    with open(USER_FILE, "w") as f:
-        json.dump(users, f)
-
-# =========================
-# AUTH
-# =========================
-def register_user(username, password):
-    users = load_users()
-    if username in users:
-        return False
-    users[username] = password
-    save_users(users)
-    return True
-
-def login_user(username, password):
-    users = load_users()
-    return username in users and users[username] == password
-
-# =========================
-# TRANSCRIPTION
-# =========================
+# -------------------------
+# TRANSCRIPTION (FIXED)
+# -------------------------
 def transcribe_audio(file_path):
     model = whisper.load_model("base")
+
+    file_path = os.path.abspath(file_path)
+
+    if not os.path.exists(file_path):
+        return "File not found"
+
     result = model.transcribe(file_path)
     return result["text"]
 
-# =========================
-# YOUTUBE AUDIO
-# =========================
-def download_audio_from_youtube(url):
+# -------------------------
+# TRANSLATION
+# -------------------------
+def translate_text(text, lang):
     try:
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": "audio.%(ext)s",
-            "quiet": True,
-            "noplaylist": True,
-        }
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
-        for f in os.listdir():
-            if f.startswith("audio"):
-                return f
-        return None
-
+        if lang == "en":
+            return text
+        return GoogleTranslator(source="auto", target=lang).translate(text)
     except:
-        return None
-
-# =========================
-# NLP FEATURES
-# =========================
-def summarize_text(text, level):
-    sentences = text.split(". ")
-
-    if level == "Short":
-        return ". ".join(sentences[:3])
-    elif level == "Medium":
-        return ". ".join(sentences[:7])
-    else:
         return text
 
-def extract_chapters(text):
-    sentences = text.split(". ")
+# -------------------------
+# AI SUMMARY (SIMULATED SMART NLP)
+# -------------------------
+def generate_summary(text, mode="medium"):
+    sentences = text.split(".")
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    if mode == "short":
+        return ". ".join(sentences[:3])
+
+    if mode == "medium":
+        return ". ".join(sentences[:7])
+
+    return ". ".join(sentences)
+
+# -------------------------
+# BULLET HIGHLIGHTS
+# -------------------------
+def extract_bullets(text):
+    sentences = text.split(".")
+    return ["✔ " + s.strip() for s in sentences[:10] if s.strip()]
+
+# -------------------------
+# TIMELINE CHAPTERS
+# -------------------------
+def generate_chapters(text):
+    sentences = text.split(".")
     chapters = []
 
     step = max(1, len(sentences)//5)
-    time = 0
 
     for i in range(0, len(sentences), step):
-        chunk = sentences[i:i+step]
-        if chunk:
-            chapters.append({
-                "time": f"{time:02d}:00",
-                "title": chunk[0][:50]
-            })
-            time += 1
+        chapters.append(f"⏱ {i}–{i+step} sec: {sentences[i][:60]}")
 
     return chapters
 
-def translate_text(text, lang):
-    if lang == "en":
-        return text
-    return GoogleTranslator(source="auto", target=lang).translate(text)
-
-# =========================
-# EXPORT FUNCTIONS
-# =========================
-def save_pdf(text):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=11)
-    safe = text.encode("latin-1", "ignore").decode("latin-1")
-    pdf.multi_cell(0, 8, safe)
-    file = "output.pdf"
-    pdf.output(file)
-    return file
-
+# -------------------------
+# EXPORT DOCX
+# -------------------------
 def save_docx(text):
     doc = Document()
     doc.add_paragraph(text)
@@ -125,17 +77,40 @@ def save_docx(text):
     doc.save(file)
     return file
 
+# -------------------------
+# EXPORT PDF
+# -------------------------
+def save_pdf(text):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, text)
+    file = "output.pdf"
+    pdf.output(file)
+    return file
+
+# -------------------------
+# EXPORT PPT (SaaS STYLE)
+# -------------------------
 def save_ppt(text):
     prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[1])
-    slide.shapes.title.text = "AI Summary"
-    slide.placeholders[1].text = text
+
+    slides = text.split(".")[:6]
+
+    for i, s in enumerate(slides):
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+        slide.shapes.title.text = f"Slide {i+1}"
+        slide.placeholders[1].text = s
+
     file = "output.pptx"
     prs.save(file)
     return file
 
-def text_to_audio(text):
-    tts = gTTS(text)
+# -------------------------
+# TEXT TO AUDIO
+# -------------------------
+def text_to_audio(text, lang="en"):
+    tts = gTTS(text=text, lang=lang)
     file = "output.mp3"
     tts.save(file)
     return file
