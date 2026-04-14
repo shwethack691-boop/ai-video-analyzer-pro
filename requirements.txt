@@ -1,12 +1,9 @@
 streamlit
 openai-whisper
-yt-dlp
+torch
+transformers
+youtube-transcript-api
 deep-translator
 gTTS
+fpdf
 python-docx
-fpdf2
-python-pptx
-torch
-numpy
-pandas
-ffmpeg-python
