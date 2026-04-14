@@ -1,118 +1,188 @@
 import streamlit as st
-import yt_dlp
 import os
-from utils import transcribe_audio
-
-# ---------------- PAGE CONFIG ----------------
-st.set_page_config(
-    page_title="AI Video Summarizer & Translator",
-    layout="wide"
+import json
+from utils import (
+    transcribe_audio,
+    get_youtube_transcript,
+    summarize_text,
+    translate_text,
+    text_to_speech,
+    create_pdf,
+    create_docx
 )
 
-# ---------------- SESSION STATE ----------------
-if "users" not in st.session_state:
-    st.session_state.users = {"admin": "1234"}
+st.set_page_config(page_title="AI Video Summarizer", layout="wide")
 
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+# -------------------------
+# DATABASE FILES
+# -------------------------
+USER_FILE = "users.json"
+HISTORY_FILE = "history.json"
 
-if "history" not in st.session_state:
-    st.session_state.history = []
+# Create files if not exist
+if not os.path.exists(USER_FILE):
+    with open(USER_FILE, "w") as f:
+        json.dump({}, f)
 
-# ---------------- LOGIN / REGISTER ----------------
-if not st.session_state.logged_in:
+if not os.path.exists(HISTORY_FILE):
+    with open(HISTORY_FILE, "w") as f:
+        json.dump([], f)
 
-    st.title("🔐 AI Video SaaS Login")
+# -------------------------
+# USER FUNCTIONS
+# -------------------------
+def load_users():
+    return json.load(open(USER_FILE))
 
-    option = st.radio("Choose Option", ["Login", "Register"])
+def save_users(users):
+    json.dump(users, open(USER_FILE, "w"))
+
+def register(username, password):
+    users = load_users()
+    if username in users:
+        return False
+    users[username] = password
+    save_users(users)
+    return True
+
+def login(username, password):
+    users = load_users()
+    return username in users and users[username] == password
+
+# -------------------------
+# HISTORY
+# -------------------------
+def save_history(user, text):
+    data = json.load(open(HISTORY_FILE))
+    data.append({"user": user, "text": text})
+    json.dump(data, open(HISTORY_FILE, "w"))
+
+def load_history(user):
+    data = json.load(open(HISTORY_FILE))
+    return [d["text"] for d in data if d["user"] == user]
+
+# -------------------------
+# SESSION
+# -------------------------
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+# -------------------------
+# LOGIN / REGISTER
+# -------------------------
+if not st.session_state.user:
+    st.title("🔐 AI Video Summarizer & Translator")
+
+    menu = st.selectbox("Choose", ["Login", "Register"])
 
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
-    # REGISTER
-    if option == "Register":
-        if st.button("Create Account"):
-            if username in st.session_state.users:
-                st.error("User already exists")
+    if menu == "Register":
+        if st.button("Register"):
+            if register(username, password):
+                st.success("Registered! Now login.")
             else:
-                st.session_state.users[username] = password
-                st.success("Account created! Now login.")
+                st.error("User already exists")
 
-    # LOGIN
-    if option == "Login":
+    if menu == "Login":
         if st.button("Login"):
-            if username in st.session_state.users and st.session_state.users[username] == password:
-                st.session_state.logged_in = True
+            if login(username, password):
                 st.session_state.user = username
                 st.rerun()
             else:
-                st.error("Invalid credentials")
+                st.error("Invalid login")
 
     st.stop()
 
-# ---------------- HEADER ----------------
-st.title("🎬 AI Video Summarizer & Translator (SaaS Mode)")
+# -------------------------
+# MAIN APP
+# -------------------------
+st.sidebar.write(f"👤 {st.session_state.user}")
+menu = st.sidebar.radio("Menu", ["Tool", "History", "Logout"])
 
-st.sidebar.success(f"👤 Welcome {st.session_state.user}")
-menu = st.sidebar.radio("Menu", ["Dashboard", "History"])
+if menu == "Logout":
+    st.session_state.user = None
+    st.rerun()
 
-# ---------------- HISTORY ----------------
+# -------------------------
+# TOOL
+# -------------------------
+if menu == "Tool":
+    st.title("🎬 AI Video Analyzer PRO")
+
+    option = st.radio("Input", ["Upload", "YouTube Link"])
+
+    text = ""
+
+    # Upload
+    if option == "Upload":
+        file = st.file_uploader("Upload video/audio")
+
+        if file:
+            path = file.name
+            with open(path, "wb") as f:
+                f.write(file.read())
+
+            st.info("Transcribing...")
+            text = transcribe_audio(path)
+
+    # YouTube
+    if option == "YouTube Link":
+        url = st.text_input("Enter YouTube URL")
+
+        if st.button("Fetch"):
+            try:
+                video_id = url.split("v=")[-1].split("&")[0]
+                text = get_youtube_transcript(video_id)
+
+                if not text:
+                    st.error("No captions available")
+            except:
+                st.error("Invalid URL")
+
+    # -------------------------
+    # PROCESS
+    # -------------------------
+    if text:
+        st.subheader("📄 Transcript")
+        st.write(text)
+
+        # Summary
+        summary = summarize_text(text)
+        st.subheader("🧠 Summary")
+        st.write(summary)
+
+        # Translation
+        lang = st.selectbox("Translate to", ["hi", "kn", "ta", "fr"])
+        translated = translate_text(summary, lang)
+        st.subheader("🌍 Translation")
+        st.write(translated)
+
+        # Audio
+        audio_file = text_to_speech(summary)
+        st.audio(audio_file)
+
+        # Downloads
+        pdf = create_pdf(summary)
+        docx = create_docx(summary)
+
+        with open(pdf, "rb") as f:
+            st.download_button("Download PDF", f, file_name="summary.pdf")
+
+        with open(docx, "rb") as f:
+            st.download_button("Download DOCX", f, file_name="summary.docx")
+
+        # Save history
+        save_history(st.session_state.user, summary)
+
+# -------------------------
+# HISTORY
+# -------------------------
 if menu == "History":
-    st.subheader("📜 History")
-    for i, h in enumerate(st.session_state.history):
-        st.write(f"{i+1}. {h[:200]}...")
-    st.stop()
+    st.title("📜 History")
+    data = load_history(st.session_state.user)
 
-# ---------------- DASHBOARD ----------------
-st.subheader("Input Source")
-
-input_type = st.radio("Select Input Type", ["Upload File", "YouTube Link"])
-
-text = ""
-
-# ---------------- FILE UPLOAD ----------------
-if input_type == "Upload File":
-    file = st.file_uploader("Upload Video / Audio")
-
-    if file:
-        ext = file.name.split(".")[-1]
-        path = f"temp.{ext}"
-
-        with open(path, "wb") as f:
-            f.write(file.read())
-
-        st.info("Processing file...")
-
-        text = transcribe_audio(path)
-
-# ---------------- YOUTUBE ----------------
-if input_type == "YouTube Link":
-    url = st.text_input("Paste YouTube URL")
-
-    if url:
-        st.info("Processing YouTube video...")
-
-        try:
-            ydl_opts = {
-                "format": "bestaudio/best",
-                "outtmpl": "video.mp4",
-                "quiet": True
-            }
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-
-            text = transcribe_audio("video.mp4")
-
-        except Exception:
-            st.error("⚠ YouTube blocked or restricted.")
-            st.info("👉 Please try Upload File option for this video.")
-
-# ---------------- OUTPUT ----------------
-if text:
-    st.success("Processing Complete")
-
-    st.subheader("📄 Transcript")
-    st.write(text)
-
-    st.session_state.history.append(text)
+    for item in data[::-1]:
+        st.write(item)
+        st.markdown("---")
