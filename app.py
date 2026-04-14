@@ -14,12 +14,12 @@ from utils import (
 st.set_page_config(page_title="AI Video Summarizer", layout="wide")
 
 # -------------------------
-# DATABASE FILES
+# FILES
 # -------------------------
 USER_FILE = "users.json"
 HISTORY_FILE = "history.json"
 
-# Create files if not exist
+# Create if not exists
 if not os.path.exists(USER_FILE):
     with open(USER_FILE, "w") as f:
         json.dump({}, f)
@@ -73,7 +73,7 @@ if "user" not in st.session_state:
 if not st.session_state.user:
     st.title("🔐 AI Video Summarizer & Translator")
 
-    menu = st.selectbox("Choose", ["Login", "Register"])
+    menu = st.selectbox("Choose Option", ["Login", "Register"])
 
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
@@ -81,9 +81,9 @@ if not st.session_state.user:
     if menu == "Register":
         if st.button("Register"):
             if register(username, password):
-                st.success("Registered! Now login.")
+                st.success("✅ Registered successfully! Please login.")
             else:
-                st.error("User already exists")
+                st.error("❌ Username already exists")
 
     if menu == "Login":
         if st.button("Login"):
@@ -91,7 +91,7 @@ if not st.session_state.user:
                 st.session_state.user = username
                 st.rerun()
             else:
-                st.error("Invalid login")
+                st.error("❌ Invalid username or password")
 
     st.stop()
 
@@ -101,21 +101,23 @@ if not st.session_state.user:
 st.sidebar.write(f"👤 {st.session_state.user}")
 menu = st.sidebar.radio("Menu", ["Tool", "History", "Logout"])
 
+# Logout
 if menu == "Logout":
     st.session_state.user = None
     st.rerun()
 
 # -------------------------
-# TOOL
+# TOOL PAGE
 # -------------------------
 if menu == "Tool":
     st.title("🎬 AI Video Analyzer PRO")
 
-    option = st.radio("Input", ["Upload", "YouTube Link"])
-
+    option = st.radio("Input Type", ["Upload", "YouTube Link"])
     text = ""
 
-    # Upload
+    # -------------------------
+    # UPLOAD (LOCAL ONLY)
+    # -------------------------
     if option == "Upload":
         file = st.file_uploader("Upload video/audio")
 
@@ -124,25 +126,35 @@ if menu == "Tool":
             with open(path, "wb") as f:
                 f.write(file.read())
 
-            st.info("Transcribing...")
+            st.info("Processing file...")
+
             text = transcribe_audio(path)
 
-    # YouTube
+            if "⚠" in text:
+                st.warning(text)
+
+    # -------------------------
+    # YOUTUBE (CLOUD SAFE)
+    # -------------------------
     if option == "YouTube Link":
         url = st.text_input("Enter YouTube URL")
 
         if st.button("Fetch"):
             try:
-                video_id = url.split("v=")[-1].split("&")[0]
+                if "v=" in url:
+                    video_id = url.split("v=")[-1].split("&")[0]
+                else:
+                    video_id = url.split("/")[-1]
+
                 text = get_youtube_transcript(video_id)
 
                 if not text:
-                    st.error("No captions available")
+                    st.error("❌ No captions available for this video")
             except:
-                st.error("Invalid URL")
+                st.error("❌ Invalid YouTube URL")
 
     # -------------------------
-    # PROCESS
+    # PROCESS OUTPUT
     # -------------------------
     if text:
         st.subheader("📄 Transcript")
@@ -154,35 +166,43 @@ if menu == "Tool":
         st.write(summary)
 
         # Translation
-        lang = st.selectbox("Translate to", ["hi", "kn", "ta", "fr"])
+        lang = st.selectbox("🌍 Translate to", ["hi", "kn", "ta", "fr"])
         translated = translate_text(summary, lang)
-        st.subheader("🌍 Translation")
+
+        st.subheader("🌐 Translation")
         st.write(translated)
 
         # Audio
         audio_file = text_to_speech(summary)
-        st.audio(audio_file)
+        if audio_file:
+            st.audio(audio_file)
 
         # Downloads
         pdf = create_pdf(summary)
         docx = create_docx(summary)
 
-        with open(pdf, "rb") as f:
-            st.download_button("Download PDF", f, file_name="summary.pdf")
+        if pdf:
+            with open(pdf, "rb") as f:
+                st.download_button("📄 Download PDF", f, file_name="summary.pdf")
 
-        with open(docx, "rb") as f:
-            st.download_button("Download DOCX", f, file_name="summary.docx")
+        if docx:
+            with open(docx, "rb") as f:
+                st.download_button("📝 Download DOCX", f, file_name="summary.docx")
 
         # Save history
         save_history(st.session_state.user, summary)
 
 # -------------------------
-# HISTORY
+# HISTORY PAGE
 # -------------------------
 if menu == "History":
     st.title("📜 History")
-    data = load_history(st.session_state.user)
 
-    for item in data[::-1]:
-        st.write(item)
-        st.markdown("---")
+    history = load_history(st.session_state.user)
+
+    if not history:
+        st.info("No history yet")
+    else:
+        for item in history[::-1]:
+            st.write(item)
+            st.markdown("---")
