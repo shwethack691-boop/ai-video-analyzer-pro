@@ -1,6 +1,7 @@
 import streamlit as st
 import yt_dlp
 import whisper
+
 from utils import (
     translate_text,
     save_pdf,
@@ -18,10 +19,13 @@ from utils import (
 st.set_page_config(page_title="AI Video Analyzer SaaS", layout="wide")
 
 # =========================
-# SESSION STATE
+# SESSION STATE INIT
 # =========================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+
+if "users" not in st.session_state:
+    st.session_state.users = {"admin": "1234"}
 
 if "history" not in st.session_state:
     st.session_state.history = []
@@ -30,21 +34,44 @@ if "transcript" not in st.session_state:
     st.session_state.transcript = ""
 
 # =========================
-# LOGIN PAGE
+# AUTH SYSTEM (LOGIN + REGISTER)
 # =========================
 if not st.session_state.logged_in:
-    st.title("🔐 AI Video Analyzer Login")
 
-    user = st.text_input("Username")
-    pwd = st.text_input("Password", type="password")
+    st.title("🔐 AI Video Analyzer - Login System")
 
-    if st.button("Login"):
-        if user and pwd:
-            st.session_state.logged_in = True
-            st.session_state.user = user
-            st.rerun()
-        else:
-            st.error("Enter credentials")
+    menu = st.radio("Choose Option", ["Login", "Register"])
+
+    # ================= REGISTER =================
+    if menu == "Register":
+        st.subheader("📝 Create New Account")
+
+        new_user = st.text_input("Username")
+        new_pass = st.text_input("Password", type="password")
+
+        if st.button("Register"):
+            if new_user in st.session_state.users:
+                st.error("User already exists")
+            elif new_user == "" or new_pass == "":
+                st.error("Fill all fields")
+            else:
+                st.session_state.users[new_user] = new_pass
+                st.success("Registered successfully! Go to Login")
+
+    # ================= LOGIN =================
+    if menu == "Login":
+        st.subheader("🔑 Login")
+
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+
+        if st.button("Login"):
+            if username in st.session_state.users and st.session_state.users[username] == password:
+                st.session_state.logged_in = True
+                st.session_state.user = username
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
 
     st.stop()
 
@@ -52,21 +79,25 @@ if not st.session_state.logged_in:
 # SIDEBAR
 # =========================
 st.sidebar.title(f"👤 Welcome {st.session_state.user}")
+
 menu = st.sidebar.radio("Menu", ["Dashboard", "History"])
 
 # =========================
-# HISTORY
+# HISTORY PAGE
 # =========================
 if menu == "History":
     st.title("📜 History")
 
-    for i, h in enumerate(st.session_state.history):
-        st.write(f"{i+1}. {h}")
+    if len(st.session_state.history) == 0:
+        st.info("No history yet")
+    else:
+        for i, h in enumerate(st.session_state.history):
+            st.write(f"{i+1}. {h}")
 
     st.stop()
 
 # =========================
-# YT DOWNLOAD FIXED FUNCTION
+# YOUTUBE DOWNLOAD (SAFE)
 # =========================
 def download_audio(url):
     try:
@@ -105,7 +136,7 @@ input_type = st.radio("Input Type", ["YouTube URL", "Upload File"])
 text = ""
 
 # =========================
-# YOUTUBE
+# YOUTUBE INPUT
 # =========================
 if input_type == "YouTube URL":
     url = st.text_input("Enter YouTube URL")
@@ -115,13 +146,12 @@ if input_type == "YouTube URL":
 
         if audio_file:
             text = transcribe(audio_file)
-            st.session_state.transcript = text
         else:
-            st.error("YouTube blocked download. Please upload file.")
+            st.error("YouTube blocked download. Please upload file instead.")
             st.stop()
 
 # =========================
-# UPLOAD
+# FILE UPLOAD
 # =========================
 if input_type == "Upload File":
     file = st.file_uploader("Upload Video / Audio")
@@ -131,55 +161,43 @@ if input_type == "Upload File":
             f.write(file.read())
 
         text = transcribe("temp.mp4")
-        st.session_state.transcript = text
 
 # =========================
 # OUTPUT SECTION
 # =========================
-if st.session_state.transcript:
-
+if text:
     st.subheader("📄 Transcript")
-    st.write(st.session_state.transcript)
+    st.write(text)
 
-    st.session_state.history.append(st.session_state.transcript)
+    st.session_state.history.append(text)
 
-    # =========================
-    # LANGUAGE
-    # =========================
+    # ================= TRANSLATION =================
     lang = st.selectbox("🌍 Language", ["en", "hi", "kn", "ta", "te", "fr", "de", "es"])
 
-    translated = translate_text(st.session_state.transcript, lang)
+    translated = translate_text(text, lang)
 
     st.subheader("🌍 Translation")
     st.write(translated)
 
-    # =========================
-    # AI FEATURES
-    # =========================
+    # ================= AI SUMMARY =================
     st.subheader("🧠 AI Summary")
 
-    level = st.radio("Summary Type", ["Short", "Medium", "Long"])
+    level = st.radio("Summary Level", ["Short", "Medium", "Long"])
 
     summary = generate_summary(translated, level)
     st.write(summary)
 
-    # =========================
-    # HIGHLIGHTS
-    # =========================
+    # ================= HIGHLIGHTS =================
     st.subheader("⭐ Highlights")
     highlights = extract_highlights(translated)
     st.write(highlights)
 
-    # =========================
-    # CHAPTERS
-    # =========================
+    # ================= CHAPTERS =================
     st.subheader("⏱ Timeline Chapters")
     chapters = generate_chapters(translated)
     st.write(chapters)
 
-    # =========================
-    # EXPORT
-    # =========================
+    # ================= EXPORT =================
     st.subheader("📤 Export")
 
     col1, col2, col3, col4 = st.columns(4)
@@ -200,7 +218,7 @@ if st.session_state.transcript:
             st.download_button("Download PPT", open(file, "rb"), file_name="report.pptx")
 
     with col4:
-        if st.button("Audio"):
+        if st.button("AUDIO"):
             file = text_to_audio(summary)
             st.audio(file)
             st.download_button("Download MP3", open(file, "rb"), file_name="audio.mp3")
