@@ -5,98 +5,90 @@ from fpdf import FPDF
 from pptx import Presentation
 import os
 
-
 # =========================
-# TRANSLATION MODULE
+# TRANSLATION
 # =========================
 def translate_text(text, lang):
-    """
-    Translate text safely using deep-translator
-    """
     try:
         if lang == "en":
             return text
-
         return GoogleTranslator(source="auto", target=lang).translate(text)
-
-    except Exception as e:
-        return f"Translation Error: {str(e)}"
-
+    except:
+        return "Translation Error"
 
 # =========================
-# TEXT TO AUDIO
+# PDF EXPORT
 # =========================
-def text_to_audio(text, lang="en"):
-    """
-    Convert text to speech using gTTS
-    """
-    try:
-        file_path = "output_audio.mp3"
-        tts = gTTS(text=text, lang=lang)
-        tts.save(file_path)
-        return file_path
-
-    except Exception as e:
-        return f"Audio Error: {str(e)}"
-
+def save_pdf(text):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, text)
+    file = "output.pdf"
+    pdf.output(file)
+    return file
 
 # =========================
 # DOCX EXPORT
 # =========================
 def save_docx(text):
-    """
-    Save transcript/summary as DOCX
-    """
     doc = Document()
-    doc.add_heading("AI Video Analysis Report", 0)
     doc.add_paragraph(text)
-
-    file_path = "output.docx"
-    doc.save(file_path)
-
-    return file_path
-
-
-# =========================
-# PDF EXPORT (FIXED UNICODE)
-# =========================
-def save_pdf(text):
-    """
-    Save PDF safely (handles Unicode like Kannada, Tamil, etc.)
-    """
-    pdf = FPDF()
-    pdf.add_page()
-
-    # FIX: Unicode-safe font fallback
-    pdf.set_font("Arial", size=12)
-
-    # Clean text to avoid crash
-    safe_text = text.encode("latin-1", "ignore").decode("latin-1")
-
-    pdf.multi_cell(190, 10, safe_text)
-
-    file_path = "output.pdf"
-    pdf.output(file_path)
-
-    return file_path
-
+    file = "output.docx"
+    doc.save(file)
+    return file
 
 # =========================
 # PPT EXPORT
 # =========================
 def save_ppt(text):
-    """
-    Create PPT summary slide
-    """
     prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "AI Summary"
+    slide.placeholders[1].text = text
+    file = "output.pptx"
+    prs.save(file)
+    return file
 
-    slide_layout = prs.slide_layouts[1]
-    slide = prs.slides.add_slide(slide_layout)
+# =========================
+# TEXT TO SPEECH
+# =========================
+def text_to_audio(text):
+    file = "output.mp3"
+    tts = gTTS(text)
+    tts.save(file)
+    return file
 
-    slide.shapes.title.text = "AI Video Summary"
-    slide.placeholders[1].text = text[:1000]  # limit for safety
+# =========================
+# AI SUMMARY (SIMPLE VERSION)
+# =========================
+def generate_summary(text, level="Short"):
+    words = text.split()
 
-    file_path = "output.pptx"
-    prs.save(file_path)
+    if level == "Short":
+        return " ".join(words[:80])
+    elif level == "Medium":
+        return " ".join(words[:200])
+    else:
+        return " ".join(words[:400])
 
-    return file_path
+# =========================
+# HIGHLIGHTS
+# =========================
+def extract_highlights(text):
+    sentences = text.split(".")
+    return "\n".join(["⭐ " + s.strip() for s in sentences[:5] if s.strip()])
+
+# =========================
+# CHAPTERS (SIMPLE TIMELINE)
+# =========================
+def generate_chapters(text):
+    sentences = text.split(".")
+    chapters = []
+
+    step = max(1, len(sentences)//5)
+
+    for i in range(0, len(sentences), step):
+        chapters.append(f"⏱ Chapter {len(chapters)+1}: {sentences[i].strip()}")
+
+    return "\n".join(chapters)
