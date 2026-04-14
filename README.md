@@ -63,6 +63,12 @@ Supports multiple languages:
 ## 📁 Project Structure
 
 ---
+2. Install Dependencies
+pip install -r requirements.txt
+
+3. Run Application
+streamlit run app.py
+http://localhost:8501
 
 # 🚀 AFTER THIS (OPTIONAL UPGRADE)
 
