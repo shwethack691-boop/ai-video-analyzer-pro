@@ -3,9 +3,13 @@ yt-dlp
 openai-whisper
 deep-translator
 gTTS
+
 python-docx
 fpdf2
 python-pptx
+
 torch
 numpy
 pandas
+
+ffmpeg-python
