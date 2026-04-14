@@ -1,72 +1,62 @@
 import streamlit as st
-import yt_dlp
-import whisper
+import os
 
 from utils import (
+    register_user,
+    login_user,
+    transcribe_audio,
+    download_audio_from_youtube,
+    summarize_text,
+    extract_chapters,
     translate_text,
     save_pdf,
     save_docx,
     save_ppt,
-    text_to_audio,
-    generate_summary,
-    generate_chapters,
-    extract_highlights
+    text_to_audio
 )
 
-# =========================
-# PAGE CONFIG
-# =========================
-st.set_page_config(page_title="AI Video Analyzer SaaS", layout="wide")
+st.set_page_config(page_title="AI Video Analyzer Pro", layout="wide")
 
 # =========================
-# SESSION STATE INIT
+# SESSION STATE
 # =========================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-if "users" not in st.session_state:
-    st.session_state.users = {"admin": "1234"}
-
-if "history" not in st.session_state:
-    st.session_state.history = []
-
-if "transcript" not in st.session_state:
-    st.session_state.transcript = ""
+if "user" not in st.session_state:
+    st.session_state.user = ""
 
 # =========================
-# AUTH SYSTEM (LOGIN + REGISTER)
+# AUTH PAGE (LOGIN + REGISTER)
 # =========================
 if not st.session_state.logged_in:
 
-    st.title("🔐 AI Video Analyzer - Login System")
+    st.title("🔐 AI Video Analyzer - Auth System")
 
-    menu = st.radio("Choose Option", ["Login", "Register"])
+    choice = st.radio("Choose Option", ["Login", "Register"])
 
     # ================= REGISTER =================
-    if menu == "Register":
-        st.subheader("📝 Create New Account")
+    if choice == "Register":
+        st.subheader("📝 Register")
 
         new_user = st.text_input("Username")
         new_pass = st.text_input("Password", type="password")
 
         if st.button("Register"):
-            if new_user in st.session_state.users:
-                st.error("User already exists")
-            elif new_user == "" or new_pass == "":
-                st.error("Fill all fields")
+            if register_user(new_user, new_pass):
+                st.success("Registered successfully! Now login.")
             else:
-                st.session_state.users[new_user] = new_pass
-                st.success("Registered successfully! Go to Login")
+                st.error("User already exists")
 
     # ================= LOGIN =================
-    if menu == "Login":
+    if choice == "Login":
         st.subheader("🔑 Login")
 
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
 
         if st.button("Login"):
-            if username in st.session_state.users and st.session_state.users[username] == password:
+            if login_user(username, password):
                 st.session_state.logged_in = True
                 st.session_state.user = username
                 st.rerun()
@@ -76,126 +66,78 @@ if not st.session_state.logged_in:
     st.stop()
 
 # =========================
-# SIDEBAR
-# =========================
-st.sidebar.title(f"👤 Welcome {st.session_state.user}")
-
-menu = st.sidebar.radio("Menu", ["Dashboard", "History"])
-
-# =========================
-# HISTORY PAGE
-# =========================
-if menu == "History":
-    st.title("📜 History")
-
-    if len(st.session_state.history) == 0:
-        st.info("No history yet")
-    else:
-        for i, h in enumerate(st.session_state.history):
-            st.write(f"{i+1}. {h}")
-
-    st.stop()
-
-# =========================
-# YOUTUBE DOWNLOAD (SAFE)
-# =========================
-def download_audio(url):
-    try:
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": "audio.%(ext)s",
-            "quiet": True,
-            "noplaylist": True,
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0"
-            }
-        }
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info)
-
-    except Exception:
-        return None
-
-# =========================
-# TRANSCRIBE
-# =========================
-def transcribe(file):
-    model = whisper.load_model("base")
-    result = model.transcribe(file)
-    return result["text"]
-
-# =========================
 # DASHBOARD
 # =========================
-st.title("🎬 AI Video Analyzer SaaS")
+st.sidebar.title(f"👤 Welcome {st.session_state.user}")
+menu = st.sidebar.radio("Menu", ["🏠 Dashboard", "📜 History"])
 
-input_type = st.radio("Input Type", ["YouTube URL", "Upload File"])
+st.title("🎬 AI Video Analyzer Pro (SaaS)")
+
+# =========================
+# INPUT
+# =========================
+input_type = st.radio("Input Type", ["Upload File", "YouTube URL"])
 
 text = ""
 
 # =========================
-# YOUTUBE INPUT
+# UPLOAD
+# =========================
+if input_type == "Upload File":
+    file = st.file_uploader("Upload Video/Audio", type=["mp4", "mp3", "wav", "m4a"])
+
+    if file:
+        path = "temp.mp4"
+        with open(path, "wb") as f:
+            f.write(file.read())
+
+        st.info("Transcribing...")
+        text = transcribe_audio(path)
+
+# =========================
+# YOUTUBE
 # =========================
 if input_type == "YouTube URL":
     url = st.text_input("Enter YouTube URL")
 
-    if url and st.button("Process"):
-        audio_file = download_audio(url)
+    if url:
+        st.info("Processing YouTube...")
 
-        if audio_file:
-            text = transcribe(audio_file)
+        audio = download_audio_from_youtube(url)
+
+        if audio:
+            text = transcribe_audio(audio)
         else:
-            st.error("YouTube blocked download. Please upload file instead.")
-            st.stop()
+            st.error("YouTube download failed. Please upload file.")
 
 # =========================
-# FILE UPLOAD
-# =========================
-if input_type == "Upload File":
-    file = st.file_uploader("Upload Video / Audio")
-
-    if file:
-        with open("temp.mp4", "wb") as f:
-            f.write(file.read())
-
-        text = transcribe("temp.mp4")
-
-# =========================
-# OUTPUT SECTION
+# OUTPUT
 # =========================
 if text:
     st.subheader("📄 Transcript")
     st.write(text)
 
-    st.session_state.history.append(text)
+    # SAVE HISTORY
+    st.session_state.setdefault("history", []).append(text)
 
-    # ================= TRANSLATION =================
-    lang = st.selectbox("🌍 Language", ["en", "hi", "kn", "ta", "te", "fr", "de", "es"])
-
-    translated = translate_text(text, lang)
-
-    st.subheader("🌍 Translation")
-    st.write(translated)
-
-    # ================= AI SUMMARY =================
+    # ================= SUMMARY =================
     st.subheader("🧠 AI Summary")
-
     level = st.radio("Summary Level", ["Short", "Medium", "Long"])
-
-    summary = generate_summary(translated, level)
+    summary = summarize_text(text, level)
     st.write(summary)
 
-    # ================= HIGHLIGHTS =================
-    st.subheader("⭐ Highlights")
-    highlights = extract_highlights(translated)
-    st.write(highlights)
-
     # ================= CHAPTERS =================
-    st.subheader("⏱ Timeline Chapters")
-    chapters = generate_chapters(translated)
-    st.write(chapters)
+    st.subheader("⏱ Chapters")
+    chapters = extract_chapters(text)
+    for c in chapters:
+        st.write(f"{c['time']} - {c['title']}")
+
+    # ================= TRANSLATION =================
+    lang = st.selectbox("🌍 Translate", ["en", "hi", "kn", "ta", "te", "fr", "de"])
+    translated = translate_text(summary, lang)
+
+    st.subheader("🌍 Translated")
+    st.write(translated)
 
     # ================= EXPORT =================
     st.subheader("📤 Export")
@@ -204,21 +146,21 @@ if text:
 
     with col1:
         if st.button("PDF"):
-            file = save_pdf(summary)
-            st.download_button("Download PDF", open(file, "rb"), file_name="report.pdf")
+            file = save_pdf(translated)
+            st.download_button("Download", open(file, "rb"), file_name="report.pdf")
 
     with col2:
         if st.button("DOCX"):
-            file = save_docx(summary)
-            st.download_button("Download DOCX", open(file, "rb"), file_name="report.docx")
+            file = save_docx(translated)
+            st.download_button("Download", open(file, "rb"), file_name="report.docx")
 
     with col3:
         if st.button("PPT"):
-            file = save_ppt(summary)
-            st.download_button("Download PPT", open(file, "rb"), file_name="report.pptx")
+            file = save_ppt(translated)
+            st.download_button("Download", open(file, "rb"), file_name="report.pptx")
 
     with col4:
         if st.button("AUDIO"):
-            file = text_to_audio(summary)
-            st.audio(file)
-            st.download_button("Download MP3", open(file, "rb"), file_name="audio.mp3")
+            audio = text_to_audio(translated)
+            st.audio(audio)
+            st.download_button("Download", open(audio, "rb"), file_name="audio.mp3")
