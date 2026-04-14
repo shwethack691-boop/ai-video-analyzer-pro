@@ -1,0 +1,15 @@
+streamlit
+openai-whisper
+transformers
+torch
+nltk
+scikit-learn
+googletrans==4.0.0-rc1
+pydub
+python-pptx
+fpdf
+python-docx
+yt-dlp
+sentence-transformers
+faiss-cpu
+gtts
