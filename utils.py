@@ -1,103 +1,69 @@
+import re
 import os
-
-# -------------------------
-# SAFE IMPORTS (Cloud-friendly)
-# -------------------------
+import whisper
+import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
-from deep_translator import GoogleTranslator
-from gtts import gTTS
-from fpdf import FPDF
-from docx import Document
+from transformers import pipeline
 
-# -------------------------
-# OPTIONAL HEAVY IMPORT (LOCAL ONLY)
-# -------------------------
-try:
-    import whisper
-    model = whisper.load_model("base")
-    WHISPER_AVAILABLE = True
-except:
-    WHISPER_AVAILABLE = False
+# Load models once
+model = whisper.load_model("base")
+summarizer = pipeline("summarization")
+translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-hi")
 
+# -------- EXTRACT VIDEO ID --------
+def extract_video_id(url):
+    regex = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
+    match = re.search(regex, url)
+    return match.group(1) if match else None
 
-# -------------------------
-# TRANSCRIPTION (LOCAL ONLY)
-# -------------------------
-def transcribe_audio(file_path):
-    if not WHISPER_AVAILABLE:
-        return "⚠ Upload transcription works only on local system (not Streamlit Cloud)"
+# -------- YOUTUBE PROCESS --------
+def get_youtube_text(url):
+    video_id = extract_video_id(url)
 
-    try:
-        result = model.transcribe(file_path)
-        return result["text"]
-    except Exception as e:
-        return f"Transcription failed: {str(e)}"
+    if not video_id:
+        return None
 
-
-# -------------------------
-# YOUTUBE TRANSCRIPT (CLOUD SAFE)
-# -------------------------
-def get_youtube_transcript(video_id):
+    # STEP 1: captions
     try:
         transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        return " ".join([t["text"] for t in transcript])
+        text = " ".join([t["text"] for t in transcript])
+        if text.strip():
+            return text
     except:
-        return None
+        pass
 
+    # STEP 2: download audio
+    try:
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': 'yt_audio.%(ext)s',
+            'quiet': True
+        }
 
-# -------------------------
-# FAST SUMMARY (NO AI MODEL)
-# -------------------------
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        for file in os.listdir():
+            if file.startswith("yt_audio"):
+                text = transcribe_audio(file)
+                os.remove(file)
+                return text
+    except:
+        pass
+
+    return None
+
+# -------- TRANSCRIBE --------
+def transcribe_audio(file_path):
+    result = model.transcribe(file_path)
+    return result["text"]
+
+# -------- SUMMARY --------
 def summarize_text(text):
-    try:
-        sentences = text.split(".")
-        return ".".join(sentences[:5])
-    except:
+    if len(text) < 50:
         return text
+    return summarizer(text[:1000])[0]["summary_text"]
 
-
-# -------------------------
-# TRANSLATION
-# -------------------------
-def translate_text(text, lang):
-    try:
-        return GoogleTranslator(source='auto', target=lang).translate(text)
-    except:
-        return "Translation failed"
-
-
-# -------------------------
-# TEXT TO SPEECH
-# -------------------------
-def text_to_speech(text, filename="output.mp3"):
-    try:
-        tts = gTTS(text)
-        tts.save(filename)
-        return filename
-    except:
-        return None
-
-
-# -------------------------
-# PDF
-# -------------------------
-def create_pdf(text, filename="output.pdf"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-
-    for line in text.split("\n"):
-        pdf.multi_cell(0, 8, line)
-
-    pdf.output(filename)
-    return filename
-
-
-# -------------------------
-# DOCX
-# -------------------------
-def create_docx(text, filename="output.docx"):
-    doc = Document()
-    doc.add_paragraph(text)
-    doc.save(filename)
-    return filename
+# -------- TRANSLATION --------
+def translate_text(text):
+    return translator(text)[0]["translation_text"]
