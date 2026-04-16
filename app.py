@@ -2,11 +2,13 @@ import streamlit as st
 import json
 import os
 from utils import (
-    get_youtube_text,
+    download_audio,
     transcribe_audio,
     summarize_text,
     translate_text
 )
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
 
 # ---------------- FILES ----------------
 USER_FILE = "users.json"
@@ -23,37 +25,45 @@ if not os.path.exists(HISTORY_FILE):
 
 # ---------------- USER FUNCTIONS ----------------
 def load_users():
-    with open(USER_FILE) as f:
-        return json.load(f)
+    try:
+        with open(USER_FILE) as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+            return []
+    except:
+        return []
 
 def save_users(users):
     with open(USER_FILE, "w") as f:
-        json.dump(users, f)
+        json.dump(users, f, indent=2)
 
 def register(username, password):
     users = load_users()
+
     for u in users:
-        if u["username"] == username:
+        if isinstance(u, dict) and u.get("username") == username:
             return False
+
     users.append({"username": username, "password": password})
     save_users(users)
     return True
 
 def login(username, password):
     users = load_users()
+
     for u in users:
-        if u["username"] == username and u["password"] == password:
-            return True
+        if isinstance(u, dict):
+            if u.get("username") == username and u.get("password") == password:
+                return True
     return False
 
-# ---------------- HISTORY FUNCTIONS ----------------
+# ---------------- HISTORY ----------------
 def load_history():
     try:
         with open(HISTORY_FILE) as f:
             data = json.load(f)
-            if isinstance(data, list):
-                return data
-            return []
+            return data if isinstance(data, list) else []
     except:
         return []
 
@@ -66,16 +76,27 @@ def add_history(user, text):
     data.append({"user": user, "text": text})
     save_history(data)
 
+# ---------------- PDF GENERATION ----------------
+def create_pdf(text, filename="summary.pdf"):
+    doc = SimpleDocTemplate(filename)
+    styles = getSampleStyleSheet()
+    content = []
+
+    for line in text.split("\n"):
+        content.append(Paragraph(line, styles["Normal"]))
+
+    doc.build(content)
+    return filename
+
 # ---------------- SESSION ----------------
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# ---------------- AUTH UI ----------------
+# ---------------- AUTH ----------------
 def auth():
     st.title("🔐 AI Video Summarizer & Translator")
 
     choice = st.radio("Select", ["Login", "Register"])
-
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
@@ -101,7 +122,6 @@ if not st.session_state.user:
     st.stop()
 
 st.sidebar.write(f"👤 {st.session_state.user}")
-
 menu = st.sidebar.selectbox("Menu", ["Tool", "History", "Logout"])
 
 # ---------------- LOGOUT ----------------
@@ -120,29 +140,45 @@ if menu == "Tool":
         url = st.text_input("Enter YouTube URL")
 
         if st.button("Process YouTube"):
-            st.info("Processing YouTube...")
+            if not url:
+                st.warning("Enter a URL")
+                st.stop()
 
-            text = get_youtube_text(url)
+            st.info("Downloading audio...")
+            audio_path = download_audio(url)
 
-            if not text:
-                st.error("⚠ Cannot process this video. Try upload.")
-            else:
-                st.success("Done")
+            if not os.path.exists(audio_path):
+                st.error("Download failed")
+                st.stop()
 
-                st.subheader("Transcript")
-                st.write(text)
+            st.success("Download complete")
 
-                summary = summarize_text(text)
-                st.subheader("Summary")
-                st.write(summary)
+            st.info("Transcribing...")
+            text, timestamps = transcribe_audio(audio_path)
 
-                translation = translate_text(summary)
-                st.subheader("Translation")
-                st.write(translation)
+            st.subheader("Transcript")
+            st.write(text)
 
-                add_history(st.session_state.user, summary)
+            st.subheader("Timestamps")
+            for t in timestamps:
+                st.write(t)
 
-    # -------- UPLOAD --------
+            summary = summarize_text(text)
+            st.subheader("Summary")
+            st.write(summary)
+
+            translation = translate_text(summary)
+            st.subheader("Translation")
+            st.write(translation)
+
+            # PDF
+            pdf_file = create_pdf(summary)
+            with open(pdf_file, "rb") as f:
+                st.download_button("Download PDF", f, file_name="summary.pdf")
+
+            add_history(st.session_state.user, summary)
+
+    # -------- FILE UPLOAD --------
     if option == "Upload File":
         file = st.file_uploader("Upload video/audio", type=["mp4", "mp3", "wav"])
 
@@ -153,10 +189,14 @@ if menu == "Tool":
             if st.button("Process File"):
                 st.info("Transcribing...")
 
-                text = transcribe_audio(file.name)
+                text, timestamps = transcribe_audio(file.name)
 
                 st.subheader("Transcript")
                 st.write(text)
+
+                st.subheader("Timestamps")
+                for t in timestamps:
+                    st.write(t)
 
                 summary = summarize_text(text)
                 st.subheader("Summary")
@@ -165,6 +205,10 @@ if menu == "Tool":
                 translation = translate_text(summary)
                 st.subheader("Translation")
                 st.write(translation)
+
+                pdf_file = create_pdf(summary)
+                with open(pdf_file, "rb") as f:
+                    st.download_button("Download PDF", f, file_name="summary.pdf")
 
                 add_history(st.session_state.user, summary)
 
@@ -176,7 +220,10 @@ if menu == "History":
 
     data = load_history()
 
-    user_data = [d for d in data if isinstance(d, dict) and d.get("user") == st.session_state.user]
+    user_data = [
+        d for d in data
+        if isinstance(d, dict) and d.get("user") == st.session_state.user
+    ]
 
     if not user_data:
         st.info("No history found")
