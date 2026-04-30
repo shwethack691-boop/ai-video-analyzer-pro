@@ -1,11 +1,6 @@
-import os
-import uuid
-import whisper
-import yt_dlp
 import requests
 import streamlit as st
-
-from youtube_transcript_api import YouTubeTranscriptApi
+import uuid
 from gtts import gTTS
 from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
@@ -13,45 +8,35 @@ from docx import Document
 from pptx import Presentation
 from deep_translator import GoogleTranslator
 
-# ---------------- LOAD MODEL ----------------
-whisper_model = whisper.load_model("base")
-
-# ---------------- YOUTUBE TEXT ----------------
+# ---------------- YOUTUBE TRANSCRIPTION (ANY VIDEO) ----------------
 def get_youtube_text(url):
-    try:
-        video_id = url.split("v=")[1].split("&")[0]
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        text = " ".join([t["text"] for t in transcript])
-        timestamps = [(t["start"], t["text"]) for t in transcript]
-        return text, timestamps
-    except:
-        return None, None
-
-# ---------------- DOWNLOAD AUDIO ----------------
-def download_audio(url):
-    filename = f"audio_{uuid.uuid4()}.mp3"
-
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': filename,
-        'quiet': True
+    headers = {
+        "authorization": st.secrets["ASSEMBLYAI_API_KEY"]
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+    data = {
+        "audio_url": url
+    }
 
-    return filename
+    # Start transcription
+    res = requests.post(
+        "https://api.assemblyai.com/v2/transcript",
+        json=data,
+        headers=headers
+    )
 
-# ---------------- TRANSCRIBE ----------------
-def transcribe_audio(path):
-    result = whisper_model.transcribe(path)
-    text = result["text"]
+    transcript_id = res.json()["id"]
 
-    timestamps = []
-    for seg in result.get("segments", []):
-        timestamps.append((seg["start"], seg["text"]))
+    # Polling
+    polling_url = f"https://api.assemblyai.com/v2/transcript/{transcript_id}"
 
-    return text, timestamps
+    while True:
+        poll = requests.get(polling_url, headers=headers).json()
+
+        if poll["status"] == "completed":
+            return poll["text"], []
+        elif poll["status"] == "error":
+            return None, None
 
 # ---------------- AI SUMMARY (HF API) ----------------
 def summarize_text(text, mode="Medium"):
@@ -81,7 +66,7 @@ def summarize_text(text, mode="Medium"):
     try:
         return response.json()[0]["summary_text"]
     except:
-        return "⚠️ Summary failed. Try shorter text."
+        return "⚠️ Summary failed"
 
 # ---------------- TRANSLATE ----------------
 def translate_text(text, lang):
@@ -94,17 +79,6 @@ def translate_text(text, lang):
 def highlight_text(text):
     sentences = text.split(".")
     return [s.strip() for s in sentences if len(s) > 60][:8]
-
-# ---------------- AUTO CHAPTERS ----------------
-def generate_chapters(timestamps):
-    chapters = []
-    step = max(1, len(timestamps)//5)
-
-    for i in range(0, len(timestamps), step):
-        start, text = timestamps[i]
-        chapters.append(f"{round(start)}s - {text[:50]}")
-
-    return chapters
 
 # ---------------- AUDIO ----------------
 def text_to_audio(text, lang="en"):
