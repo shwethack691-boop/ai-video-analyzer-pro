@@ -1,86 +1,57 @@
-# 🎬 AI Video Analyzer Pro (SaaS Level Project)
+# 🎬 AI Video Analyzer Pro
 
-An AI-powered web application that can **analyze YouTube videos or uploaded audio/video files**, generate **transcriptions, translations, summaries, highlights, and export reports in multiple formats**.
-
-Built using **Streamlit + Whisper + NLP tools**, this project demonstrates a complete **AI SaaS-style pipeline**.
-
----
-
-## 🌐 Live Features
-
-✔ YouTube Video Processing  
-✔ Audio/Video Upload Support  
-✔ Speech-to-Text (Whisper AI)  
-✔ Multi-language Translation  
-✔ AI Summary (Short / Medium / Long)  
-✔ Key Highlights Extraction  
-✔ Timeline Chapters Generation  
-✔ Export to PDF, DOCX, PPT  
-✔ Audio Generation (Text-to-Speech)  
-✔ Login + Register System  
-✔ History Tracking  
+## 🚀 Overview
+An AI-powered application that processes YouTube videos and uploaded files to generate transcripts, summaries, translations, and audio outputs.
 
 ---
 
-## 🧠 AI Features
-
-### 🔹 Speech Recognition
-Uses OpenAI Whisper model to convert speech into text.
-
-### 🔹 NLP Processing
-- Automatic summarization
-- Keyword-based highlight extraction
-- Chapter segmentation
-
-### 🔹 Translation
-Supports multiple languages:
-- English
-- Hindi
-- Kannada
-- Tamil
-- Telugu
-- Malayalam
-- French
-- German
-- Spanish
+## ✨ Features
+- 📺 YouTube + File Upload Support  
+- 🎤 Speech-to-Text (Whisper AI)  
+- 🌍 Multi-language Translation (28 Languages)  
+- 📝 AI Summary (Short / Medium / Long)  
+- 📌 Auto Chapter Detection  
+- ✨ Key Highlights Extraction  
+- 🔊 Text-to-Speech (Audio Output)  
+- 📥 Export to PDF, DOCX, PPT  
+- 💬 Chat with Video (Q&A)  
+- 🔐 Login + Register System  
+- 📜 History Tracking  
 
 ---
 
-## 🏗️ Tech Stack
-
-- Python 3.11
-- Streamlit
-- Whisper AI
-- yt-dlp
-- Deep Translator
-- gTTS
-- python-docx
-- fpdf2
-- python-pptx
+## 🛠️ Tech Stack
+- Python  
+- Streamlit  
+- Whisper AI  
+- Transformers  
+- yt-dlp  
+- gTTS  
 
 ---
 
-## 📁 Project Structure
+## ▶️ How to Run
 
----
-2. Install Dependencies
+```bash
 pip install -r requirements.txt
+python -m streamlit run app.py
 
-3. Run Application
-streamlit run app.py
-http://localhost:8501
+Author
 
-# 🚀 AFTER THIS (OPTIONAL UPGRADE)
+Shwetha
 
-If you want, I can also help you:
 
-### 🔥 Make your GitHub PRO LEVEL:
-- Add screenshots (UI images)
-- Add badges (Streamlit / Python / AI)
-- Add live demo link
-- Add architecture diagram
-- Make it look like real startup SaaS project
+👉 Save (Ctrl + S)
 
-Just say:
+---
 
-👉 **“make README pro with images + badges”**
+# ✅ 🔥 STEP 3 — PUSH FROM VS CODE TERMINAL
+
+Open terminal inside VS Code (**Ctrl + `**)
+
+Run:
+
+```bash
+git add .
+git commit -m "Added gitignore and README"
+git push
