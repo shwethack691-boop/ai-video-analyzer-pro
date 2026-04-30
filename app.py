@@ -216,3 +216,4 @@ if menu == "History":
     for h in get_history(st.session_state.user):
         st.write(h["text"])
         st.markdown("---")
+# restart
