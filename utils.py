@@ -20,7 +20,10 @@ def get_youtube_text(url):
 
     res = requests.post(
         "https://api.assemblyai.com/v2/transcript",
-        json={"audio_url": url},
+        json={
+            "audio_url": url,
+            "speech_model": "universal-2"
+        },
         headers=headers
     )
 
