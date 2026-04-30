@@ -1,5 +1,6 @@
 import requests
 import streamlit as st
+import time
 import uuid
 from gtts import gTTS
 from reportlab.platypus import SimpleDocTemplate, Paragraph
@@ -8,26 +9,28 @@ from docx import Document
 from pptx import Presentation
 from deep_translator import GoogleTranslator
 
-# ---------------- YOUTUBE TRANSCRIPTION (ANY VIDEO) ----------------
+# ---------------- YOUTUBE TRANSCRIPTION ----------------
 def get_youtube_text(url):
     headers = {
-        "authorization": st.secrets["ASSEMBLYAI_API_KEY"]
+        "authorization": st.secrets.get("ASSEMBLYAI_API_KEY", "")
     }
 
-    data = {
-        "audio_url": url
-    }
+    if not headers["authorization"]:
+        return "❌ API key missing", []
 
-    # Start transcription
     res = requests.post(
         "https://api.assemblyai.com/v2/transcript",
-        json=data,
+        json={"audio_url": url},
         headers=headers
     )
 
-    transcript_id = res.json()["id"]
+    data = res.json()
 
-    # Polling
+    if "id" not in data:
+        return f"❌ API Error: {data}", []
+
+    transcript_id = data["id"]
+
     polling_url = f"https://api.assemblyai.com/v2/transcript/{transcript_id}"
 
     while True:
@@ -35,15 +38,18 @@ def get_youtube_text(url):
 
         if poll["status"] == "completed":
             return poll["text"], []
-        elif poll["status"] == "error":
-            return None, None
 
-# ---------------- AI SUMMARY (HF API) ----------------
+        elif poll["status"] == "error":
+            return f"❌ Transcription failed: {poll}", []
+
+        time.sleep(3)
+
+# ---------------- SUMMARY ----------------
 def summarize_text(text, mode="Medium"):
     API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
 
     headers = {
-        "Authorization": f"Bearer {st.secrets['HF_TOKEN']}"
+        "Authorization": f"Bearer {st.secrets.get('HF_TOKEN','')}"
     }
 
     if mode == "Short":
@@ -61,9 +67,8 @@ def summarize_text(text, mode="Medium"):
         }
     }
 
-    response = requests.post(API_URL, headers=headers, json=payload)
-
     try:
+        response = requests.post(API_URL, headers=headers, json=payload)
         return response.json()[0]["summary_text"]
     except:
         return "⚠️ Summary failed"
