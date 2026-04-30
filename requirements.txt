@@ -1,14 +1,7 @@
 streamlit
-youtube-transcript-api
-openai-whisper
-torch
-transformers
-sentencepiece
+requests
 gtts
 reportlab
 python-docx
 python-pptx
-requests
-yt-dlp
 deep-translator
-
