@@ -6,12 +6,12 @@ from utils import *
 USER_FILE = "users.json"
 HISTORY_FILE = "history.json"
 
-# ---------------- INIT ----------------
+# ---------------- INIT FILES ----------------
 for f in [USER_FILE, HISTORY_FILE]:
     if not os.path.exists(f):
         json.dump([], open(f, "w"))
 
-# ---------------- USERS ----------------
+# ---------------- USER SYSTEM ----------------
 def load_users():
     return json.load(open(USER_FILE))
 
@@ -42,28 +42,11 @@ def get_history(user):
 if "user" not in st.session_state:
     st.session_state.user = None
 
-if "chat" not in st.session_state:
-    st.session_state.chat = []
-
-if "context" not in st.session_state:
-    st.session_state.context = ""
-
-if "text" not in st.session_state:
-    st.session_state.text = ""
-
-if "timestamps" not in st.session_state:
-    st.session_state.timestamps = []
-
-if "summary" not in st.session_state:
-    st.session_state.summary = ""
-
-if "translated_text" not in st.session_state:
-    st.session_state.translated_text = ""
-
 # ---------------- AUTH ----------------
 def auth():
     st.title("🔐 AI Video Analyzer Pro")
-    mode = st.radio("Mode", ["Login", "Register"])
+
+    mode = st.radio("Select Mode", ["Login", "Register"])
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
 
@@ -74,146 +57,112 @@ def auth():
         elif mode == "Register" and register(u, p):
             st.success("Registered successfully")
         else:
-            st.error("Invalid credentials or user exists")
+            st.error("Invalid credentials")
 
+# ---------------- MAIN ----------------
 if not st.session_state.user:
     auth()
     st.stop()
 
 st.sidebar.success(f"👤 {st.session_state.user}")
-menu = st.sidebar.selectbox("Menu", ["Tool", "Chat", "History", "Logout"])
+menu = st.sidebar.selectbox("Menu", ["Tool", "History", "Logout"])
 
 if menu == "Logout":
     st.session_state.user = None
-    st.session_state.chat = []
-    st.session_state.context = ""
-    st.session_state.text = ""
-    st.session_state.timestamps = []
-    st.session_state.summary = ""
-    st.session_state.translated_text = ""
     st.rerun()
 
 # ---------------- TOOL ----------------
 if menu == "Tool":
     st.title("🎬 AI Video Analyzer Pro")
 
-    option = st.radio("Input Type", ["YouTube URL", "Upload File"])
+    url = st.text_input("Enter YouTube URL")
 
-    url = st.text_input("Enter YouTube URL") if option == "YouTube URL" else None
-    file = st.file_uploader("Upload Audio/Video", type=["mp3", "wav", "mp4"]) if option == "Upload File" else None
-
-    if st.button("🚀 Process"):
-
-        if url:
-            text, timestamps = get_youtube_text(url)
-
-            if not text:
-                st.warning("⚠️ No captions found. Using audio transcription...")
-                audio_path = download_audio(url)
-                text, timestamps = transcribe_audio(audio_path)
-
-        elif file:
-            with open(file.name, "wb") as f:
-                f.write(file.getbuffer())
-            text, timestamps = transcribe_audio(file.name)
-
-        else:
-            st.error("Please provide input")
+    if st.button("🚀 Process Video"):
+        if not url:
+            st.warning("Please enter URL")
             st.stop()
 
-        # ✅ SAVE EVERYTHING
-        st.session_state.text = text
-        st.session_state.timestamps = timestamps
-        st.session_state.summary = summarize_text(text, "Medium")
-        st.session_state.context = text
+        with st.spinner("Processing video..."):
+            text, timestamps = get_youtube_text(url)
 
-    # -------- SHOW DATA (NO RESET) --------
-    if st.session_state.text:
+        # ❗ ERROR HANDLING
+        if not text or text.startswith("❌"):
+            st.error(text if text else "❌ Failed to extract text")
+            st.stop()
 
-        st.subheader("📄 Transcript")
-        st.write(st.session_state.text)
+        st.subheader("📜 Transcript")
+        st.write(text)
 
-        st.subheader("📌 Auto Chapters")
-        for ch in generate_chapters(st.session_state.timestamps):
-            st.write(f"{ch['time']}s → {ch['title']}")
+        # ---------------- SUMMARY ----------------
+        mode = st.selectbox("Summary Type", ["Short", "Medium", "Long"])
+        summary = summarize_text(text, mode)
 
-        st.subheader("📝 Summary")
-        st.write(st.session_state.summary)
+        st.subheader("🧠 Summary")
+        st.write(summary)
 
+        # ---------------- HIGHLIGHTS ----------------
         st.subheader("✨ Highlights")
-        st.write(highlight_text(st.session_state.text))
+        st.write(highlight_text(text))
 
-        # -------- LANGUAGES --------
+        # ---------------- LANGUAGE ----------------
         st.markdown("---")
-
-        LANGUAGES = {
-            "English": "en", "Hindi": "hi", "Kannada": "kn", "Tamil": "ta",
-            "Telugu": "te", "Malayalam": "ml", "Marathi": "mr", "Gujarati": "gu",
-            "Bengali": "bn", "Punjabi": "pa", "Urdu": "ur", "Spanish": "es",
-            "French": "fr", "German": "de", "Italian": "it", "Portuguese": "pt",
-            "Russian": "ru", "Chinese (Simplified)": "zh-cn", "Japanese": "ja",
-            "Korean": "ko", "Arabic": "ar", "Turkish": "tr", "Dutch": "nl",
-            "Polish": "pl", "Thai": "th", "Vietnamese": "vi",
-            "Indonesian": "id", "Greek": "el"
+        language_options = {
+            "English": "en",
+            "Hindi": "hi",
+            "Kannada": "kn",
+            "Tamil": "ta",
+            "Telugu": "te",
+            "French": "fr",
+            "German": "de",
+            "Spanish": "es",
+            "Chinese": "zh-cn",
+            "Japanese": "ja"
         }
 
-        lang_name = st.selectbox("🌍 Select Language", list(LANGUAGES.keys()))
-        lang_code = LANGUAGES[lang_name]
+        lang_name = st.selectbox("Select Language", list(language_options.keys()))
+        lang_code = language_options[lang_name]
 
-        if st.button("🌐 Translate"):
-            st.session_state.translated_text = translate_text(
-                st.session_state.text, lang_code
-            )
+        translated = translate_text(summary, lang_code)
 
-        st.subheader("🌐 Translated Text")
-        st.write(st.session_state.translated_text)
+        st.subheader(f"🌍 Translated ({lang_name})")
+        st.write(translated)
 
-        # -------- AUDIO --------
-        if st.session_state.translated_text:
-            audio = text_to_audio(st.session_state.translated_text, lang_code)
-            st.audio(audio)
+        # ---------------- AUDIO ----------------
+        audio_file = text_to_audio(translated, lang_code)
+        st.audio(audio_file)
 
-            with open(audio, "rb") as f:
-                st.download_button("⬇️ Download Audio", f, "audio.mp3")
+        with open(audio_file, "rb") as f:
+            st.download_button("⬇️ Download Audio", f, "audio.mp3")
 
-        # -------- EXPORT --------
-        if st.session_state.translated_text:
-            pdf = create_pdf(st.session_state.translated_text)
-            docx = create_docx(st.session_state.translated_text)
-            ppt = create_ppt(st.session_state.translated_text)
+        # ---------------- EXPORT ----------------
+        pdf = create_pdf(translated)
+        docx = create_docx(translated)
+        ppt = create_ppt(translated)
 
-            with open(pdf, "rb") as f:
-                st.download_button("Download PDF", f)
+        with open(pdf, "rb") as f:
+            st.download_button("⬇️ Download PDF", f)
 
-            with open(docx, "rb") as f:
-                st.download_button("Download DOCX", f)
+        with open(docx, "rb") as f:
+            st.download_button("⬇️ Download DOCX", f)
 
-            with open(ppt, "rb") as f:
-                st.download_button("Download PPT", f)
+        with open(ppt, "rb") as f:
+            st.download_button("⬇️ Download PPT", f)
 
-# ---------------- CHAT ----------------
-if menu == "Chat":
-    st.title("💬 Ask Questions from Video")
-
-    if not st.session_state.context:
-        st.warning("⚠️ Process a video first")
-    else:
-        q = st.text_input("Ask your question")
-
-        if st.button("Ask"):
-            ans = ask_question(st.session_state.context, q)
-            st.session_state.chat.append((q, ans))
-
-        for q, a in st.session_state.chat:
-            st.markdown(f"**Q:** {q}")
-            st.markdown(f"**A:** {a}")
-            st.markdown("---")
+        # ---------------- SAVE HISTORY ----------------
+        save_history({
+            "user": st.session_state.user,
+            "text": summary
+        })
 
 # ---------------- HISTORY ----------------
 if menu == "History":
     st.title("📜 History")
 
-    for h in get_history(st.session_state.user):
+    history = get_history(st.session_state.user)
+
+    if not history:
+        st.info("No history found")
+
+    for h in history:
         st.write(h["text"])
         st.markdown("---")
-# restart
