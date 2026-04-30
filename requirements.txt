@@ -1,8 +1,12 @@
 streamlit
-yt-dlp
+youtube-transcript-api
 openai-whisper
 torch
-ffmpeg-python
-sentencepiece
 transformers
-youtube-transcript-api
+sentencepiece
+gtts
+reportlab
+python-docx
+python-pptx
+pytube
+deep-translator
