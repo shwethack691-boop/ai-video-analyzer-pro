@@ -1,87 +1,158 @@
 import os
-import yt_dlp
+import uuid
 import whisper
-from transformers import pipeline
+import yt_dlp
 
-# ---------------- LOAD MODELS ----------------
+from youtube_transcript_api import YouTubeTranscriptApi
+from transformers import pipeline
+from gtts import gTTS
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
+from docx import Document
+from pptx import Presentation
+from deep_translator import GoogleTranslator
+
+# ---------------- MODELS ----------------
 whisper_model = whisper.load_model("base")
 
-# Summarizer model
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
-# Translator model (multi-language)
-translator = pipeline("translation", model="Helsinki-NLP/opus-mt-en-hi")  
-# 👉 You can change 'en-hi' to:
-# en-fr (French), en-es (Spanish), en-de (German), etc.
+qa_pipeline = pipeline("question-answering", model="deepset/roberta-base-squad2")
 
-# ---------------- DOWNLOAD AUDIO ----------------
+# ---------------- YOUTUBE TEXT ----------------
+def get_youtube_text(url):
+    try:
+        video_id = url.split("v=")[1].split("&")[0]
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
+
+        text = " ".join([t["text"] for t in transcript])
+        return text, transcript
+    except:
+        return None, None
+
+# ---------------- DOWNLOAD AUDIO (FIXED) ----------------
 def download_audio(url):
-    output_path = "downloads"
-    os.makedirs(output_path, exist_ok=True)
+    file = f"audio_{uuid.uuid4()}.mp3"
 
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': f'{output_path}/%(title)s.%(ext)s',
-        'noplaylist': True,
+        'outtmpl': file,
         'quiet': True,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
+        'noplaylist': True
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            audio_file = os.path.splitext(filename)[0] + ".mp3"
-            return audio_file
+            ydl.download([url])
+        return file
     except Exception as e:
-        return f"Error: {str(e)}"
+        raise Exception(f"Audio download failed: {e}")
 
-# ---------------- TRANSCRIBE WITH TIMESTAMPS ----------------
-def transcribe_audio(file_path):
+# ---------------- TRANSCRIBE ----------------
+def transcribe_audio(path):
+    result = whisper_model.transcribe(path)
+    text = result["text"]
+
+    timestamps = []
+    for seg in result.get("segments", []):
+        timestamps.append({
+            "start": seg["start"],
+            "text": seg["text"]
+        })
+
+    return text, timestamps
+
+# ---------------- SUMMARY ----------------
+def summarize_text(text, mode="Medium"):
+    length = {"Short": 100, "Medium": 200, "Long": 400}
+
+    summary = summarizer(
+        text[:2000],
+        max_length=length[mode],
+        min_length=50,
+        do_sample=False
+    )
+
+    return summary[0]["summary_text"]
+
+# ---------------- TRANSLATE ----------------
+def translate_text(text, lang):
     try:
-        result = whisper_model.transcribe(file_path)
+        return GoogleTranslator(source='auto', target=lang).translate(text[:3000])
+    except:
+        return text
 
-        text = result["text"]
+# ---------------- HIGHLIGHTS ----------------
+def highlight_text(text):
+    sentences = text.split(".")
+    return [s.strip() for s in sentences if len(s) > 60][:10]
 
-        # Extract timestamps
-        timestamps = []
-        for segment in result["segments"]:
-            start = round(segment["start"], 2)
-            end = round(segment["end"], 2)
-            content = segment["text"]
-            timestamps.append(f"[{start}s - {end}s] {content}")
+# ---------------- AUTO CHAPTERS ----------------
+def generate_chapters(timestamps):
+    chapters = []
+    current = ""
+    start_time = 0
 
-        return text, timestamps
+    for t in timestamps:
+        if len(current) < 150:
+            current += " " + t["text"]
+        else:
+            chapters.append({
+                "time": round(start_time, 2),
+                "title": current[:60]
+            })
+            current = t["text"]
+            start_time = t["start"]
 
-    except Exception as e:
-        return f"Error: {str(e)}", []
+    if current:
+        chapters.append({
+            "time": round(start_time, 2),
+            "title": current[:60]
+        })
 
-# ---------------- SUMMARIZE TEXT ----------------
-def summarize_text(text):
+    return chapters
+
+# ---------------- Q&A CHAT ----------------
+def ask_question(context, question):
     try:
-        if len(text) < 50:
-            return "Text too short to summarize."
+        answer = qa_pipeline({
+            "question": question,
+            "context": context[:3000]
+        })
+        return answer["answer"]
+    except:
+        return "Could not find answer."
 
-        summary = summarizer(
-            text,
-            max_length=150,
-            min_length=50,
-            do_sample=False
-        )
+# ---------------- AUDIO ----------------
+def text_to_audio(text, lang="en"):
+    file = f"audio_{uuid.uuid4()}.mp3"
+    gTTS(text=text, lang=lang).save(file)
+    return file
 
-        return summary[0]['summary_text']
+# ---------------- EXPORTS ----------------
+def create_pdf(text):
+    file = "output.pdf"
+    doc = SimpleDocTemplate(file)
+    styles = getSampleStyleSheet()
+    content = [Paragraph(line, styles["Normal"]) for line in text.split("\n")]
+    doc.build(content)
+    return file
 
-    except Exception as e:
-        return f"Error: {str(e)}"
+def create_docx(text):
+    file = "output.docx"
+    doc = Document()
+    doc.add_heading("AI Video Report", 0)
+    for line in text.split("\n"):
+        doc.add_paragraph(line)
+    doc.save(file)
+    return file
 
-# ---------------- TRANSLATE TEXT ----------------
-def translate_text(text):
-    try:
-        translated = translator(text, max_length=512)
-        return translated[0]['translation_text']
-    except Exception as e:
-        return f"Error: {str(e)}"
+def create_ppt(text):
+    file = "output.pptx"
+    prs = Presentation()
+    for part in text.split("\n"):
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+        slide.shapes.title.text = "AI Slide"
+        slide.placeholders[1].text = part[:200]
+    prs.save(file)
+    return file
