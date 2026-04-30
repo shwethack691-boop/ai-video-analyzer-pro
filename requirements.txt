@@ -8,5 +8,5 @@ gtts
 reportlab
 python-docx
 python-pptx
-pytube
+yt-dlp
 deep-translator
