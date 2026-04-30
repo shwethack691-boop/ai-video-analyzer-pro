@@ -46,7 +46,7 @@ if "user" not in st.session_state:
 def auth():
     st.title("🔐 AI Video Analyzer Pro")
 
-    mode = st.radio("Select Mode", ["Login", "Register"])
+    mode = st.radio("Login / Register", ["Login", "Register"])
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
 
@@ -75,38 +75,55 @@ if menu == "Logout":
 if menu == "Tool":
     st.title("🎬 AI Video Analyzer Pro")
 
-    url = st.text_input("Enter YouTube URL")
+    option = st.radio("Select Input Type", ["YouTube URL", "Upload File"])
 
-    if st.button("🚀 Process Video"):
-        if not url:
-            st.warning("Please enter URL")
+    url = None
+    file = None
+
+    if option == "YouTube URL":
+        url = st.text_input("Enter YouTube URL")
+    else:
+        file = st.file_uploader("Upload audio/video file")
+
+    if st.button("🚀 Process"):
+
+        if option == "YouTube URL" and not url:
+            st.warning("Enter URL")
             st.stop()
 
-        with st.spinner("Processing video..."):
-            text, timestamps = get_youtube_text(url)
+        if option == "Upload File" and not file:
+            st.warning("Upload file")
+            st.stop()
 
-        # ❗ ERROR HANDLING
+        with st.spinner("Processing..."):
+
+            if option == "YouTube URL":
+                text, timestamps = get_youtube_text(url)
+            else:
+                text = file.read().decode(errors="ignore")
+                timestamps = []
+
         if not text or text.startswith("❌"):
-            st.error(text if text else "❌ Failed to extract text")
+            st.error(text if text else "Failed")
             st.stop()
 
         st.subheader("📜 Transcript")
         st.write(text)
 
-        # ---------------- SUMMARY ----------------
+        # SUMMARY
         mode = st.selectbox("Summary Type", ["Short", "Medium", "Long"])
         summary = summarize_text(text, mode)
 
         st.subheader("🧠 Summary")
         st.write(summary)
 
-        # ---------------- HIGHLIGHTS ----------------
+        # HIGHLIGHTS
         st.subheader("✨ Highlights")
         st.write(highlight_text(text))
 
-        # ---------------- LANGUAGE ----------------
+        # TRANSLATION
         st.markdown("---")
-        language_options = {
+        languages = {
             "English": "en",
             "Hindi": "hi",
             "Kannada": "kn",
@@ -119,50 +136,41 @@ if menu == "Tool":
             "Japanese": "ja"
         }
 
-        lang_name = st.selectbox("Select Language", list(language_options.keys()))
-        lang_code = language_options[lang_name]
+        lang_name = st.selectbox("Select Language", list(languages.keys()))
+        lang_code = languages[lang_name]
 
         translated = translate_text(summary, lang_code)
 
         st.subheader(f"🌍 Translated ({lang_name})")
         st.write(translated)
 
-        # ---------------- AUDIO ----------------
+        # AUDIO
         audio_file = text_to_audio(translated, lang_code)
         st.audio(audio_file)
 
         with open(audio_file, "rb") as f:
-            st.download_button("⬇️ Download Audio", f, "audio.mp3")
+            st.download_button("Download Audio", f, "audio.mp3")
 
-        # ---------------- EXPORT ----------------
+        # EXPORT
         pdf = create_pdf(translated)
         docx = create_docx(translated)
         ppt = create_ppt(translated)
 
         with open(pdf, "rb") as f:
-            st.download_button("⬇️ Download PDF", f)
+            st.download_button("Download PDF", f)
 
         with open(docx, "rb") as f:
-            st.download_button("⬇️ Download DOCX", f)
+            st.download_button("Download DOCX", f)
 
         with open(ppt, "rb") as f:
-            st.download_button("⬇️ Download PPT", f)
+            st.download_button("Download PPT", f)
 
-        # ---------------- SAVE HISTORY ----------------
-        save_history({
-            "user": st.session_state.user,
-            "text": summary
-        })
+        save_history({"user": st.session_state.user, "text": summary})
 
 # ---------------- HISTORY ----------------
 if menu == "History":
     st.title("📜 History")
 
-    history = get_history(st.session_state.user)
-
-    if not history:
-        st.info("No history found")
-
-    for h in history:
+    for h in get_history(st.session_state.user):
         st.write(h["text"])
         st.markdown("---")
